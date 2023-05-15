@@ -51,6 +51,10 @@ const char* controllerGetName();
 
 
 #ifdef CONFIG_CONTROLLER_OOT
+void update_agent_pose(float name, float x, float y, float z);
+void add_new_agent(float name, float pose[], float d, float k);
+void target_pose(float pose[]);
+void enable_formation(void);
 void controllerOutOfTreeInit(void);
 bool controllerOutOfTreeTest(void);
 void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const stabilizerStep_t stabilizerStep);

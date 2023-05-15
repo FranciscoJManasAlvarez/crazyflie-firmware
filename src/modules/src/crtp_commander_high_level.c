@@ -57,6 +57,8 @@ such as: take-off, landing, polynomial trajectories.
 #include "commander.h"
 #include "stabilizer_types.h"
 #include "stabilizer.h"
+#include "controller.h"
+#include "app.h"
 
 // Local types
 enum TrajectoryLocation_e {
@@ -139,6 +141,10 @@ enum TrajectoryCommand_e {
   COMMAND_LAND_2                  = 8,
   COMMAND_TAKEOFF_WITH_VELOCITY   = 9,
   COMMAND_LAND_WITH_VELOCITY      = 10,
+  COMMAND_UPDATE_NEIGHBOUR        = 11,
+  COMMAND_NEW_NEIGHBOUR           = 12,
+  COMMAND_TARGET_POSE             = 13,
+  COMMAND_ENABLE_FORMATION        = 14,
 };
 
 struct data_set_group_mask {
@@ -232,6 +238,28 @@ struct data_define_trajectory {
   struct trajectoryDescription description;
 } __attribute__((packed));
 
+// MULTI-ROBOT SYSTEM
+struct data_update_neighbour {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float id;
+  float x;
+  float y;
+  float z;
+} __attribute__((packed));
+struct data_new_neighbour {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float id;
+  float d;
+  float k;
+} __attribute__((packed));
+struct data_target_pose {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float x;
+  float y;
+  float z;
+} __attribute__((packed));
+
+
 // Private functions
 static void crtpCommanderHighLevelTask(void * prm);
 
@@ -246,6 +274,9 @@ static int stop(const struct data_stop* data);
 static int go_to(const struct data_go_to* data);
 static int start_trajectory(const struct data_start_trajectory* data);
 static int define_trajectory(const struct data_define_trajectory* data);
+static int update_agent(const struct data_update_neighbour* data);
+static int new_agent(const struct data_new_neighbour* data);
+static int go_to_target_pose(const struct data_target_pose* data);
 
 // Helper functions
 static struct vec state2vec(struct vec3_s v)
@@ -400,6 +431,19 @@ static int handleCommand(const enum TrajectoryCommand_e command, const uint8_t* 
       break;
     case COMMAND_DEFINE_TRAJECTORY:
       ret = define_trajectory((const struct data_define_trajectory*)data);
+      break;
+    case COMMAND_UPDATE_NEIGHBOUR:
+      ret = update_agent((const struct data_update_neighbour*)data);
+      break;
+    case COMMAND_NEW_NEIGHBOUR:
+      ret = new_agent((const struct data_new_neighbour*)data);
+      break;
+    case COMMAND_TARGET_POSE:
+      ret = go_to_target_pose((const struct data_target_pose*)data);
+      break;
+    case COMMAND_ENABLE_FORMATION:
+      enable_formation();
+      ret = 0.0;
       break;
     default:
       ret = ENOEXEC;
@@ -628,6 +672,29 @@ int define_trajectory(const struct data_define_trajectory* data)
     return ENOEXEC;
   }
   trajectory_descriptions[data->trajectoryId] = data->description;
+  return 0;
+}
+
+int update_agent(const struct data_update_neighbour* data)
+{
+  update_agent_pose(data->id, data->x, data->y, data->z); 
+
+  return 0;
+}
+
+int new_agent(const struct data_new_neighbour* data)
+{
+  float pose[3] = {0.0, 0.0, 0.0};
+  add_new_agent(data->id, pose, data->d, data->k);
+  
+  return 0;
+}
+
+int go_to_target_pose(const struct data_target_pose* data)
+{
+  float pose[3] = {data->x, data->y, data->z};
+  target_pose(pose);
+  
   return 0;
 }
 
