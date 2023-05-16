@@ -61,15 +61,18 @@ agent agent_list[MAX_AGENTS];
 int num_agents = 0;
 
 bool formation = false;
-
 static setpoint_t multi_agent_setpoint;
 
 void target_pose(float pose[]){
   setpoint_t setpoint;
 
+  setpoint.mode.z = modeAbs;
+  setpoint.mode.x = modeAbs;
+  setpoint.mode.y = modeAbs;
   setpoint.position.x = pose[0];
   setpoint.position.y = pose[1];
   setpoint.position.z = pose[2];
+  memcpy(agent_list[num_agents].pose, pose, sizeof(float)*3);
   formation = false;
     
   commanderSetSetpoint(&setpoint, 3);
@@ -88,6 +91,7 @@ void add_new_agent(float name, float pose[], float d, float k) {
     agent_list[num_agents].idn = name;
     memcpy(agent_list[num_agents].pose, pose, sizeof(float)*3);
     agent_list[num_agents].d = d;
+    agent_list[num_agents].k = k;
 
     num_agents++;
 }
@@ -119,9 +123,9 @@ void controller_update(setpoint_t setpoint, const state_t *state) {
       error_y = state->position.y - agent_list[i].pose[1];
       error_z = state->position.z - agent_list[i].pose[2];
       distance = powf(error_x,2)+powf(error_y,2)+powf(error_z,2);
-      dx += (powf(agent_list[i].d,2) - distance) * error_x;
-      dy += (powf(agent_list[i].d,2) - distance) * error_y;
-      dz += (powf(agent_list[i].d,2) - distance) * error_z;
+      dx += agent_list[i].k * (powf(agent_list[i].d,2) - distance) * error_x;
+      dy += agent_list[i].k * (powf(agent_list[i].d,2) - distance) * error_y;
+      dz += agent_list[i].k * (powf(agent_list[i].d,2) - distance) * error_z;
     }
 
     if(dx >  0.32f) 
