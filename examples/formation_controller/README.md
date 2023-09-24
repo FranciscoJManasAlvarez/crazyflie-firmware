@@ -1,0 +1,3 @@
+# Formation controller App for Crazyflie 2.X
+
+This folder contains the app layer application for the Crazyflie ...

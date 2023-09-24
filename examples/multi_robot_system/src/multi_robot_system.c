@@ -60,6 +60,8 @@ typedef struct {
 agent agent_list[MAX_AGENTS];
 int num_agents = 0;
 
+float ref_pose[3];
+bool goal_pose = false;
 bool formation = false;
 static setpoint_t multi_agent_setpoint;
 
@@ -74,7 +76,10 @@ void target_pose(float pose[]){
   setpoint.position.z = pose[2];
   memcpy(agent_list[num_agents].pose, pose, sizeof(float)*3);
   formation = false;
-    
+  ref_pose[0] = pose[0];
+  ref_pose[1] = pose[1];
+  ref_pose[2] = pose[2];
+  goal_pose = true;
   commanderSetSetpoint(&setpoint, 3);
 }
 void enable_formation(){
@@ -183,6 +188,11 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
   if (RATE_DO_EXECUTE(20, tick)) {
     if(formation){
       controller_update(multi_agent_setpoint, state);
+      goal_pose = false;
+    }else{
+      if(goal_pose){
+        target_pose(ref_pose);
+      }
     }
     
     multi_agent_setpoint.position.x = setpoint->position.x;
