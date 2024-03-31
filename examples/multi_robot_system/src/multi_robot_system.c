@@ -97,8 +97,33 @@ void add_new_agent(float name, float pose[], float d, float k) {
     memcpy(agent_list[num_agents].pose, pose, sizeof(float)*3);
     agent_list[num_agents].d = d;
     agent_list[num_agents].k = k;
-
     num_agents++;
+}
+
+void remove_neighbour(float name){
+    int i,j;
+    for (i = 0; i < num_agents-1; i++) {
+        if (agent_list[i].idn == name) {
+          for (j = i; j < num_agents-1; j++) {
+            agent_list[j].idn = agent_list[j+1].idn;
+            agent_list[j].d = agent_list[j+1].d;
+            agent_list[j].k = agent_list[j+1].k;
+            memcpy(agent_list[j].pose, agent_list[j+1].pose, sizeof(float)*3);
+          }
+          num_agents = num_agents - 1;
+          return;
+        }
+    }
+}
+
+void update_distance(float name, float d){
+    int i;
+    for (i = 0; i < num_agents-1; i++) {
+        if (agent_list[i].idn == name) {
+          agent_list[i].d = d;
+          return;
+        }
+    }
 }
 
 void update_agent_pose(float name, float x, float y, float z) {
@@ -133,27 +158,31 @@ void controller_update(setpoint_t setpoint, const state_t *state) {
       dz += agent_list[i].k * (powf(agent_list[i].d,2) - distance) * error_z;
     }
 
-    if(dx >  0.32f) 
-      dx = 0.32f;
-    if(dx < -0.32f) 
-      dx = -0.32f;
-    if(dy >  0.32f) 
-      dy = 0.32f;
-    if(dy < -0.32f) 
-      dy = -0.32f;
-    if(dz >  0.32f) 
-      dz = 0.32f;
-    if(dz < -0.32f) 
-      dz = -0.32f;
+    if(dx >  0.1f) 
+      dx = 0.1f;
+    if(dx < -0.1f) 
+      dx = -0.1f;
+    if(dy >  0.1f) 
+      dy = 0.1f;
+    if(dy < -0.1f) 
+      dy = -0.1f;
+    if(dz >  0.1f) 
+      dz = 0.1f;
+    if(dz < -0.1f) 
+      dz = -0.1f;
 
     setpoint.mode.z = modeAbs;
     setpoint.mode.x = modeAbs;
     setpoint.mode.y = modeAbs;
-    setpoint.position.x = state->position.x + dx/4.0f;
-    setpoint.position.y = state->position.y + dy/4.0f;
-    setpoint.position.z = state->position.z + dz/4.0f;
+    setpoint.position.x = state->position.x + dx;
+    setpoint.position.y = state->position.y + dy;
+    setpoint.position.z = state->position.z + dz;
 
-    // setpoint.position.z = 1.0;
+    // setpoint.position.z = 0.8;
+
+    if(setpoint.position.z < 0.8f){
+      setpoint.position.z = 0.8f;
+    }
 
     if(setpoint.position.z > 2.0f){
       setpoint.position.z = 2.0f;
@@ -185,7 +214,7 @@ bool controllerOutOfTreeTest() {
 
 void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const uint32_t tick) {
   // Implement your controller here...
-  if (RATE_DO_EXECUTE(20, tick)) {
+  if (RATE_DO_EXECUTE(10, tick)) {
     if(formation){
       controller_update(multi_agent_setpoint, state);
       goal_pose = false;
@@ -195,9 +224,9 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
       }
     }
     
-    multi_agent_setpoint.position.x = setpoint->position.x;
-    multi_agent_setpoint.position.y = setpoint->position.y;
-    multi_agent_setpoint.position.z = setpoint->position.z;
+    multi_agent_setpoint.position.x = setpoint->position.x - state->position.x;
+    multi_agent_setpoint.position.y = setpoint->position.y - state->position.y;
+    multi_agent_setpoint.position.z = setpoint->position.z - state->position.z;
 
     // DEBUG_PRINT("state: (X:%.3f, Y:%.3f, Z:%.3f)\n", (double)state->position.x, (double)state->position.y, (double)state->position.z);
     // DEBUG_PRINT("SETPOINT: (X:%.3f, Y:%.3f, Z:%.3f)\n", (double)setpoint->position.x, (double)setpoint->position.y, (double)setpoint->position.z);

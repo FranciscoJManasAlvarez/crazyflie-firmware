@@ -53,6 +53,8 @@ const char* controllerGetName();
 #ifdef CONFIG_CONTROLLER_OOT
 void update_agent_pose(float name, float x, float y, float z);
 void add_new_agent(float name, float pose[], float d, float k);
+void remove_neighbour(float name);
+void update_distance(float name, float d);
 void target_pose(float pose[]);
 void enable_formation(void);
 void controllerOutOfTreeInit(void);

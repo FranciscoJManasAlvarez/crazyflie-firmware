@@ -145,6 +145,8 @@ enum TrajectoryCommand_e {
   COMMAND_NEW_NEIGHBOUR           = 12,
   COMMAND_TARGET_POSE             = 13,
   COMMAND_ENABLE_FORMATION        = 14,
+  COMMAND_REMOVE_NEIGHBOUR        = 15,
+  COMMAND_UPDATE_DISTANCE         = 16,
 };
 
 struct data_set_group_mask {
@@ -246,6 +248,10 @@ struct data_update_neighbour {
   float y;
   float z;
 } __attribute__((packed));
+struct data_remove_neighbour {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float id;
+} __attribute__((packed));
 struct data_new_neighbour {
   uint8_t groupMask; // mask for which CFs this should apply to
   float id;
@@ -257,6 +263,11 @@ struct data_target_pose {
   float x;
   float y;
   float z;
+} __attribute__((packed));
+struct data_update_distance {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float id;
+  float d;
 } __attribute__((packed));
 
 
@@ -275,6 +286,8 @@ static int go_to(const struct data_go_to* data);
 static int start_trajectory(const struct data_start_trajectory* data);
 static int define_trajectory(const struct data_define_trajectory* data);
 static int update_agent(const struct data_update_neighbour* data);
+static int remove_agent(const struct data_remove_neighbour* data);
+static int update_neighbour_d(const struct data_update_distance* data);
 static int new_agent(const struct data_new_neighbour* data);
 static int go_to_target_pose(const struct data_target_pose* data);
 
@@ -434,6 +447,12 @@ static int handleCommand(const enum TrajectoryCommand_e command, const uint8_t* 
       break;
     case COMMAND_UPDATE_NEIGHBOUR:
       ret = update_agent((const struct data_update_neighbour*)data);
+      break;
+    case COMMAND_REMOVE_NEIGHBOUR:
+      ret = remove_agent((const struct data_remove_neighbour*)data);
+      break;
+    case COMMAND_UPDATE_DISTANCE:
+      ret = update_neighbour_d((const struct data_update_distance*)data);
       break;
     case COMMAND_NEW_NEIGHBOUR:
       ret = new_agent((const struct data_new_neighbour*)data);
@@ -682,6 +701,13 @@ int update_agent(const struct data_update_neighbour* data)
   return 0;
 }
 
+int remove_agent(const struct data_remove_neighbour* data)
+{
+  remove_neighbour(data->id);
+
+  return 0;
+}
+
 int new_agent(const struct data_new_neighbour* data)
 {
   float pose[3] = {0.0, 0.0, 0.0};
@@ -694,6 +720,13 @@ int go_to_target_pose(const struct data_target_pose* data)
 {
   float pose[3] = {data->x, data->y, data->z};
   target_pose(pose);
+  
+  return 0;
+}
+
+int update_neighbour_d(const struct data_update_distance* data)
+{
+  update_distance(data->id, data->d);
   
   return 0;
 }
