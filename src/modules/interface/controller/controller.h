@@ -51,12 +51,19 @@ const char* controllerGetName();
 
 
 #ifdef CONFIG_CONTROLLER_OOT
+// Multi-Robot App
 void update_agent_pose(float name, float x, float y, float z);
 void add_new_agent(float name, float pose[], float d, float k);
 void remove_neighbour(float name);
 void update_distance(float name, float d);
 void target_pose(float pose[]);
 void enable_formation(void);
+// Gimbal App
+void attitud_cmd(float roll, float pitch, float yaw, float thrust);
+void attituderate_cmd(float roll, float pitch, float yaw, float thrust);
+void enable_relay(void);
+float update_attitude_relay(float setpoint, float value);
+// General
 void controllerOutOfTreeInit(void);
 bool controllerOutOfTreeTest(void);
 void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const stabilizerStep_t stabilizerStep);

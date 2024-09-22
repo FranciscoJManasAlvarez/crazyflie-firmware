@@ -147,6 +147,9 @@ enum TrajectoryCommand_e {
   COMMAND_ENABLE_FORMATION        = 14,
   COMMAND_REMOVE_NEIGHBOUR        = 15,
   COMMAND_UPDATE_DISTANCE         = 16,
+  COMMAND_UPDATE_ATTITUDE         = 17,
+  COMMAND_UPDATE_ATTITUDE_RATE    = 18,
+  COMMAND_ENABLE_RELAY            = 19,
 };
 
 struct data_set_group_mask {
@@ -270,6 +273,22 @@ struct data_update_distance {
   float d;
 } __attribute__((packed));
 
+// GIMABL
+struct data_update_attitude_cmd {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float roll;
+  float pitch;
+  float yaw;
+  float thrust;
+} __attribute__((packed));
+
+struct data_update_attituderate_cmd {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  float roll;
+  float pitch;
+  float yaw;
+  float thrust;
+} __attribute__((packed));
 
 // Private functions
 static void crtpCommanderHighLevelTask(void * prm);
@@ -290,6 +309,9 @@ static int remove_agent(const struct data_remove_neighbour* data);
 static int update_neighbour_d(const struct data_update_distance* data);
 static int new_agent(const struct data_new_neighbour* data);
 static int go_to_target_pose(const struct data_target_pose* data);
+
+static int update_attitud_cmd(const struct data_update_attitude_cmd* data);
+static int update_attituderate_cmd(const struct data_update_attituderate_cmd* data);
 
 // Helper functions
 static struct vec state2vec(struct vec3_s v)
@@ -462,6 +484,16 @@ static int handleCommand(const enum TrajectoryCommand_e command, const uint8_t* 
       break;
     case COMMAND_ENABLE_FORMATION:
       enable_formation();
+      ret = 0.0;
+      break;
+    case COMMAND_UPDATE_ATTITUDE:
+      ret = update_attitud_cmd((const struct data_update_attitude_cmd*)data);
+      break;
+    case COMMAND_UPDATE_ATTITUDE_RATE:
+      ret = update_attituderate_cmd((const struct data_update_attituderate_cmd*)data);
+      break;
+    case COMMAND_ENABLE_RELAY:
+      enable_relay();
       ret = 0.0;
       break;
     default:
@@ -728,6 +760,20 @@ int update_neighbour_d(const struct data_update_distance* data)
 {
   update_distance(data->id, data->d);
   
+  return 0;
+}
+
+int update_attitud_cmd(const struct data_update_attitude_cmd* data)
+{
+  attitud_cmd(data->roll, data->pitch, data->yaw, data->thrust); 
+
+  return 0;
+}
+
+int update_attituderate_cmd(const struct data_update_attituderate_cmd* data)
+{
+  attituderate_cmd(data->roll, data->pitch, data->yaw, data->thrust); 
+
   return 0;
 }
 

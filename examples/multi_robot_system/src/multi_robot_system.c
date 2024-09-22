@@ -65,6 +65,10 @@ bool goal_pose = false;
 bool formation = false;
 static setpoint_t multi_agent_setpoint;
 
+void attitud_cmd(float roll, float pitch, float yaw){}
+void attituderate_cmd(float roll, float pitch, float yaw){}
+void enable_relay(){}
+
 void target_pose(float pose[]){
   setpoint_t setpoint;
 
@@ -180,8 +184,8 @@ void controller_update(setpoint_t setpoint, const state_t *state) {
 
     // setpoint.position.z = 0.8;
 
-    if(setpoint.position.z < 0.8f){
-      setpoint.position.z = 0.8f;
+    if(setpoint.position.z < 0.6f){
+      setpoint.position.z = 0.6f;
     }
 
     if(setpoint.position.z > 2.0f){
@@ -212,7 +216,7 @@ bool controllerOutOfTreeTest() {
   return true;
 }
 
-void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const uint32_t tick) {
+void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const uint32_t tick, attitude_t *attitude) {
   // Implement your controller here...
   if (RATE_DO_EXECUTE(10, tick)) {
     if(formation){
@@ -236,8 +240,6 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
 }
 
 /**
- * Logging variables for the command and reference signals for the
- * altitude PID controller
  */
 LOG_GROUP_START(multirobot)
 /**
