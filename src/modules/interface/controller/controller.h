@@ -49,8 +49,19 @@ void controller(control_t *control, const setpoint_t *setpoint,
 ControllerType controllerGetType(void);
 const char* controllerGetName();
 
-
+// Event-based Control
+struct threshold
+{
+  float co, ai, cn;
+  float dt;
+  float noise[20];
+  float last_signal;
+  int16_t count;
+};
 #ifdef CONFIG_CONTROLLER_OOT
+// Event-based Control
+struct threshold init_triggering(float co, float ai);
+bool eval_threshold(struct threshold *trigger, float signal, float ref);
 // Multi-Robot App
 void update_agent_pose(float name, float x, float y, float z);
 void add_new_agent(float name, float pose[], float d, float k);

@@ -1,0 +1,1 @@
+cmd_/home/kiko/Code/crazyflie-firmware/examples/app_hello_world/built-in.o :=  arm-none-eabi-gcc --specs=nosys.specs --specs=nano.specs -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -nostdlib  -r -o /home/kiko/Code/crazyflie-firmware/examples/app_hello_world/built-in.o /home/kiko/Code/crazyflie-firmware/examples/app_hello_world/src/built-in.o

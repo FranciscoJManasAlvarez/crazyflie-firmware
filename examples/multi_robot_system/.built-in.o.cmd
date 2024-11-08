@@ -1,0 +1,1 @@
+cmd_/home/kiko/Code/crazyflie-firmware/examples/multi_robot_system/built-in.o :=  arm-none-eabi-gcc --specs=nosys.specs --specs=nano.specs -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -nostdlib  -r -o /home/kiko/Code/crazyflie-firmware/examples/multi_robot_system/built-in.o /home/kiko/Code/crazyflie-firmware/examples/multi_robot_system/src/built-in.o

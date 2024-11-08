@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "app.h"
 #include "attitude_controller.h"
@@ -20,6 +21,7 @@
 #include "task.h"
 #include "commander.h"
 #include "stabilizer_types.h"
+#include "platform_defaults.h"
 
 #include "attitude_controller.h"
 #include "position_controller.h"
@@ -36,19 +38,26 @@
 static attitude_t attitudeDesired;
 static attitude_t rateDesired;
 static float actuatorThrust;
+struct threshold roll_rate_threshold, pitch_rate_threshold;
+
 
 bool gimbal = false;
 bool rate = false;
 bool relay = false;
 bool relay_level = false;
+static int idx = 0;
 static float relay_error = 0.0f;
-static float relay_threshold = 7.0f;
-static float relay_cmd = 30.0f;
-static float rate_relay_threshold = 25.0f;
-static float rate_relay_cmd = 25000.0f;
+static float relay_threshold = 11.0f;
+static float relay_cmd = 10.0f;
+static float rate_relay_threshold = 2.0f;
+static float rate_relay_cmd = 10000.0f;
+static float rate_cmd_eq[200];
+static float cmd_eq = 0.0f;
 static float rroll_cmd = 0.0f;
 static float rpitch_cmd = 0.0f;
 static float ryaw_cmd = 0.0f;
+static float rroll_count = 0.0f;
+static float rpitch_count = 0.0f;
 
 static setpoint_t setpoint_cmd;
 static state_t state_process;
@@ -60,6 +69,90 @@ void remove_neighbour(float name){}
 void update_distance(float name, float d){}
 void update_agent_pose(float name, float x, float y, float z) {}
 void controller_update(setpoint_t setpoint, const state_t *state) {}
+
+
+static bool rateFiltEnable = ATTITUDE_RATE_LPF_ENABLE;
+static float omxFiltCutoff = ATTITUDE_ROLL_RATE_LPF_CUTOFF_FREQ;
+static float omyFiltCutoff = ATTITUDE_PITCH_RATE_LPF_CUTOFF_FREQ;
+static float omzFiltCutoff = ATTITUDE_YAW_RATE_LPF_CUTOFF_FREQ;
+
+static inline int16_t saturateSignedInt16(float in)
+{
+  // don't use INT16_MIN, because later we may negate it, which won't work for that value.
+  if (in > INT16_MAX)
+    return INT16_MAX;
+  else if (in < -INT16_MAX)
+    return -INT16_MAX;
+  else
+    return (int16_t)in;
+}
+
+PidObject pidRollRate_rp = {
+  .kp = PID_ROLL_RATE_KP,
+  .ki = PID_ROLL_RATE_KI,
+  .kd = PID_ROLL_RATE_KD,
+  .kff = PID_ROLL_RATE_KFF,
+};
+
+PidObject pidPitchRate_rp = {
+  .kp = PID_PITCH_RATE_KP,
+  .ki = PID_PITCH_RATE_KI,
+  .kd = PID_PITCH_RATE_KD,
+  .kff = PID_PITCH_RATE_KFF,
+};
+
+PidObject pidYawRate_rp = {
+  .kp = PID_YAW_RATE_KP,
+  .ki = PID_YAW_RATE_KI,
+  .kd = PID_YAW_RATE_KD,
+  .kff = PID_YAW_RATE_KFF,
+};
+
+struct threshold init_triggering(float co, float ai)
+{
+  struct threshold  trigger;
+
+  trigger.co = co;
+  trigger.ai = ai;
+  trigger.count = 1;
+  trigger.last_signal = 0.0f;
+  trigger.dt = 0.0f;
+
+  return trigger;
+}
+
+bool eval_threshold(struct threshold *trigger, float signal, float ref)
+{
+  // Noise - Cn
+	float mean = signal/20.0f;
+	for(int i = 0; i<19; i++){
+		trigger->noise[i+1] = trigger->noise[i];
+		mean += trigger->noise[i]/20.0f;
+	}
+	trigger->noise[0] = signal;
+	trigger->cn = 0.0;
+	for(int i = 0; i<20; i++){
+		if(abs(trigger->noise[i]-mean) > trigger->cn)
+			trigger->cn = trigger->noise[i]-mean;
+	}
+	// a
+	float a = trigger->ai * abs(signal - ref);
+	if (a>trigger->ai)
+		a = trigger->ai;
+	// Threshold
+	float th = trigger->co + a + trigger->cn;
+	float inc = abs(abs(ref-signal) - trigger->last_signal);
+
+	// Delta Error
+	if (inc >= th){
+		trigger->last_signal = abs(ref-signal);
+    // trigger->count = 1;
+		return true;
+	}
+  trigger->count += 1;
+	return false;
+}
+
 
 void attitud_cmd(float roll, float pitch, float yaw, float thrust){
   if(rate){
@@ -113,16 +206,16 @@ float update_rate_relay(float setpoint, float value){
   if(!relay_level){
     if(relay_error>rate_relay_threshold){
       relay_level = true;
-      return rate_relay_cmd;
+      return rate_relay_cmd+cmd_eq;
     }else{
-      return -rate_relay_cmd;
+      return -rate_relay_cmd+cmd_eq;
     }
   }else{
     if(relay_error<-rate_relay_threshold){
       relay_level = false;
-      return -rate_relay_cmd;
+      return -rate_relay_cmd+cmd_eq;
     }else{
-      return rate_relay_cmd;
+      return rate_relay_cmd+cmd_eq;
     }
   }
 }
@@ -131,8 +224,14 @@ void enable_relay(){
   relay_error = 0.0f;
   if(!relay){
     relay = true;
+    for (size_t i = 0; i < 200; i++)
+    {
+      cmd_eq = cmd_eq + rate_cmd_eq[i];
+    }
+    
   }else{
     relay = false;
+    cmd_eq = 0.0f;
   }
 }
 
@@ -154,6 +253,19 @@ void controllerOutOfTreeInit() {
   setpoint_cmd.mode.pitch = modeDisable;
   setpoint_cmd.mode.yaw = modeDisable;
   controllerPidInit();
+  roll_rate_threshold = init_triggering(0.5f, 0.1);
+  pitch_rate_threshold = init_triggering(0.5f, 0.1);
+  pidInit(&pidRollRate_rp,  0, pidRollRate_rp.kp,  pidRollRate_rp.ki,  pidRollRate_rp.kd,
+       pidRollRate_rp.kff,  0.002f, ATTITUDE_RATE, omxFiltCutoff, rateFiltEnable);
+  pidInit(&pidPitchRate_rp, 0, pidPitchRate_rp.kp, pidPitchRate_rp.ki, pidPitchRate_rp.kd,
+       pidPitchRate_rp.kff, 0.002f, ATTITUDE_RATE, omyFiltCutoff, rateFiltEnable);
+  pidInit(&pidYawRate_rp,   0, pidYawRate_rp.kp,   pidYawRate_rp.ki,   pidYawRate_rp.kd,
+       pidYawRate_rp.kff,   0.002f, ATTITUDE_RATE, omzFiltCutoff, rateFiltEnable);
+
+  pidSetIntegralLimit(&pidRollRate_rp,  PID_ROLL_RATE_INTEGRATION_LIMIT);
+  pidSetIntegralLimit(&pidPitchRate_rp, PID_PITCH_RATE_INTEGRATION_LIMIT);
+  pidSetIntegralLimit(&pidYawRate_rp,   PID_YAW_RATE_INTEGRATION_LIMIT);
+
 }
 
 bool controllerOutOfTreeTest() {
@@ -184,15 +296,15 @@ void controllerOutOfTree(control_t *control, const setpoint_t* setpoint, const s
                                 attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw,
                                 &rateDesired.roll, &rateDesired.pitch, &rateDesired.yaw);
     // Attitude Relay
-
+    // Cambiar "false" por "relay" para ejecutar el relé en el Attitude controller
     if(false){
       // Roll
-      //rateDesired.roll = update_attitude_relay(attitudeDesired.roll, state->attitude.roll);
-      //attitudeControllerResetRollAttitudePID();
+      rateDesired.roll = update_attitude_relay(attitudeDesired.roll, state->attitude.roll);
+      attitudeControllerResetRollAttitudePID();
       
       // Pitch
-      //rateDesired.pitch = update_attitude_relay(attitudeDesired.pitch, state->attitude.pitch);
-      //attitudeControllerResetPitchAttitudePID();
+      // rateDesired.pitch = update_attitude_relay(attitudeDesired.pitch, state->attitude.pitch);
+      // attitudeControllerResetPitchAttitudePID();
 
       // Yaw
       //rateDesired.yaw = update_attitude_relay(attitudeDesired.roll, state->attitude.roll);
@@ -202,60 +314,76 @@ void controllerOutOfTree(control_t *control, const setpoint_t* setpoint, const s
     // For roll and pitch, if velocity mode, overwrite rateDesired with the setpoint
     // value. Also reset the PID to avoid error buildup, which can lead to unstable
     // behavior if level mode is engaged later
-    if (setpoint->mode.roll == modeVelocity) {
-      rateDesired.roll = setpoint->attitudeRate.roll;
+    if (setpoint->mode.roll == modeVelocity || rate) {
+      rateDesired.roll = setpoint_cmd.attitudeRate.roll; //setpoint->attitudeRate.roll;
       attitudeControllerResetRollAttitudePID();
     }
-    if (setpoint->mode.pitch == modeVelocity) {
-      rateDesired.pitch = setpoint->attitudeRate.pitch;
+    if (setpoint->mode.pitch == modeVelocity || rate) {
+      rateDesired.pitch = setpoint_cmd.attitudeRate.pitch; // setpoint->attitudeRate.pitch;
       attitudeControllerResetPitchAttitudePID();
     }
+    // rateDesired.pitch = setpoint_cmd.attitudeRate.pitch;
+    // rateDesired.roll = setpoint_cmd.attitudeRate.roll;
 
-    // TODO: Investigate possibility to subtract gyro drift.
-    /*
-    
-    */
-    
+
+    // Cambiar "false" por "relay" para ejecutar el relé en el Rate controller
     if(relay){
-      attitudeControllerCorrectRatePID( sensors->gyro.x, 0.0f, sensors->gyro.z,
-                                        rateDesired.roll, 0.0f, rateDesired.yaw);
-    
+      attitudeControllerCorrectRatePID( sensors->gyro.x, 0.0f, sensors->gyro.z, rateDesired.roll, 0.0f, rateDesired.yaw);
+      // attitudeControllerCorrectRatePID( 0.0f, -sensors->gyro.y, sensors->gyro.z, 0.0f, rateDesired.pitch, rateDesired.yaw);    
       attitudeControllerGetActuatorOutput(&control->roll,
                                         &control->pitch,
                                         &control->yaw);
 
       control->pitch = update_rate_relay(0.0f, -sensors->gyro.y);
+      //control->roll = update_rate_relay(0.0f, sensors->gyro.x);
     }else{
+      /*
       attitudeControllerCorrectRatePID(sensors->gyro.x, -sensors->gyro.y, sensors->gyro.z,
                              rateDesired.roll, rateDesired.pitch, rateDesired.yaw);
     
       attitudeControllerGetActuatorOutput(&control->roll,
                                           &control->pitch,
                                           &control->yaw);
-    }
-    
-    /*
-    pidSetDesired(&pidRollRate, rateDesired.roll);
-    control->roll = saturateSignedInt16(pidUpdate(&pidRollRate, sensors->gyro.x, true));
-
-    pidSetDesired(&pidPitchRate, rateDesired.pitch);
-    control->pitch = saturateSignedInt16(pidUpdate(&pidPitchRate, -sensors->gyro.y, true));
-
-    pidSetDesired(&pidYawRate, rateDesired.yaw);
-
-    control->yaw = saturateSignedInt16(pidUpdate(&pidYawRate, sensors->gyro.z, true));
-    */
-    
-    
-    control->yaw = -control->yaw;
+      */
+      if(eval_threshold(&roll_rate_threshold, sensors->gyro.x, rateDesired.roll))
+      {
+        pidSetDesired(&pidRollRate_rp, rateDesired.roll);
+        pidRollRate_rp.dt = 0.002f * roll_rate_threshold.count;
+        control->roll = saturateSignedInt16(pidUpdate(&pidRollRate_rp, sensors->gyro.x, true));
+        roll_rate_threshold.count = 1;
+      }
+      else
+      {
+        control->roll = rroll_cmd;
+      }
+      if(eval_threshold(&pitch_rate_threshold, -sensors->gyro.y, rateDesired.pitch))
+      {
+        pidSetDesired(&pidPitchRate_rp, rateDesired.pitch);
+        pidPitchRate_rp.dt = 0.002f * pitch_rate_threshold.count;
+        control->pitch = saturateSignedInt16(pidUpdate(&pidPitchRate_rp, -sensors->gyro.y, true));
+        pitch_rate_threshold.count = 1;
+      }
+      else
+      {
+        control->pitch = rpitch_cmd;
+      }
+    }    
+    control->yaw = 0.0f; //-control->yaw;
   }
 
   control->thrust = actuatorThrust;
   rroll_cmd = control->roll;
   rpitch_cmd = control->pitch;
   ryaw_cmd = control->yaw;
+  rroll_count = roll_rate_threshold.count;
+  rpitch_count = pitch_rate_threshold.count;
 
-  
+  rate_cmd_eq[idx] = rpitch_cmd/200.0f;
+  if(idx == 199){
+    idx = 0;
+  }else{
+    idx = idx + 1;
+  }  
 }
 
 /**
@@ -309,6 +437,14 @@ LOG_ADD(LOG_FLOAT, rate_pitch_cmd, &rpitch_cmd)
  * @brief Setpoint_z
  */
 LOG_ADD(LOG_FLOAT, rate_yaw_cmd, &ryaw_cmd)
+/**
+ * @brief Setpoint_z
+ */
+LOG_ADD(LOG_FLOAT, rate_roll_count, &rroll_count)
+/**
+ * @brief Setpoint_z
+ */
+LOG_ADD(LOG_FLOAT, rate_pitch_count, &rpitch_count)
 
 LOG_GROUP_STOP(rele)
 
