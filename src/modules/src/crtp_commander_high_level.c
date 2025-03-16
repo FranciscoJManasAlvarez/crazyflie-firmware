@@ -150,6 +150,8 @@ enum TrajectoryCommand_e {
   COMMAND_UPDATE_ATTITUDE         = 17,
   COMMAND_UPDATE_ATTITUDE_RATE    = 18,
   COMMAND_ENABLE_RELAY            = 19,
+  COMMAND_UPDATE_RELAY_PARAMS     = 20,
+  COMMAND_UPDATE_CONTROLLER_PARAMS= 21,
 };
 
 struct data_set_group_mask {
@@ -290,6 +292,24 @@ struct data_update_attituderate_cmd {
   float thrust;
 } __attribute__((packed));
 
+struct data_update_relay_params {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  uint8_t level;
+  uint8_t angle;
+  float cmd;
+  float threshold;
+} __attribute__((packed));
+
+struct data_update_controller_params {
+  uint8_t groupMask; // mask for which CFs this should apply to
+  uint8_t level;
+  uint8_t angle;
+  float kp;
+  float ki;
+  float kd;
+  float co;
+} __attribute__((packed));
+
 // Private functions
 static void crtpCommanderHighLevelTask(void * prm);
 
@@ -312,6 +332,8 @@ static int go_to_target_pose(const struct data_target_pose* data);
 
 static int update_attitud_cmd(const struct data_update_attitude_cmd* data);
 static int update_attituderate_cmd(const struct data_update_attituderate_cmd* data);
+static int update_relay_params_cmd(const struct data_update_relay_params* data);
+static int update_controller_params_cmd(const struct data_update_controller_params* data);
 
 // Helper functions
 static struct vec state2vec(struct vec3_s v)
@@ -491,6 +513,12 @@ static int handleCommand(const enum TrajectoryCommand_e command, const uint8_t* 
       break;
     case COMMAND_UPDATE_ATTITUDE_RATE:
       ret = update_attituderate_cmd((const struct data_update_attituderate_cmd*)data);
+      break;
+    case COMMAND_UPDATE_RELAY_PARAMS:
+      ret = update_relay_params_cmd((const struct data_update_relay_params*)data);
+      break;
+    case COMMAND_UPDATE_CONTROLLER_PARAMS:
+      ret = update_controller_params_cmd((const struct data_update_controller_params*)data);
       break;
     case COMMAND_ENABLE_RELAY:
       enable_relay();
@@ -773,6 +801,20 @@ int update_attitud_cmd(const struct data_update_attitude_cmd* data)
 int update_attituderate_cmd(const struct data_update_attituderate_cmd* data)
 {
   attituderate_cmd(data->roll, data->pitch, data->yaw, data->thrust); 
+
+  return 0;
+}
+
+int update_relay_params_cmd(const struct data_update_relay_params* data)
+{
+  relay_params(data->level, data->angle, data->cmd, data->threshold); 
+
+  return 0;
+}
+
+int update_controller_params_cmd(const struct data_update_controller_params* data)
+{
+  controller_params(data->level, data->angle, data->kp, data->ki, data->kd, data->co); 
 
   return 0;
 }

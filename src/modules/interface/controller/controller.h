@@ -50,18 +50,17 @@ ControllerType controllerGetType(void);
 const char* controllerGetName();
 
 // Event-based Control
-struct threshold
-{
+typedef struct threshold_s{
   float co, ai, cn;
   float dt;
   float noise[20];
   float last_signal;
   int16_t count;
-};
+}threshold;
 #ifdef CONFIG_CONTROLLER_OOT
 // Event-based Control
-struct threshold init_triggering(float co, float ai);
-bool eval_threshold(struct threshold *trigger, float signal, float ref);
+threshold init_triggering(float co, float ai);
+bool eval_threshold(threshold *trigger, float signal, float ref);
 // Multi-Robot App
 void update_agent_pose(float name, float x, float y, float z);
 void add_new_agent(float name, float pose[], float d, float k);
@@ -74,7 +73,10 @@ void attitud_cmd(float roll, float pitch, float yaw, float thrust);
 void attituderate_cmd(float roll, float pitch, float yaw, float thrust);
 void enable_relay(void);
 float update_attitude_relay(float setpoint, float value);
+void relay_params(uint8_t level, uint8_t angle, float cmd, float threshold);
+
 // General
+void controller_params(uint8_t level, uint8_t angle, float kp, float ki, float kd, float co);
 void controllerOutOfTreeInit(void);
 bool controllerOutOfTreeTest(void);
 void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const stabilizerStep_t stabilizerStep);
